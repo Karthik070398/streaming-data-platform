@@ -1,0 +1,4 @@
+kafka-python==2.0.2
+faker==24.4.0
+psycopg2-binary==2.9.9
+pyyaml==6.0.1

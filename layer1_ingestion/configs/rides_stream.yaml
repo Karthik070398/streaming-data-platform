@@ -1,0 +1,18 @@
+# This file describes ONE pipeline: where data comes from, where it goes,
+# and any settings either side needs. The engine reads this file and runs
+# exactly the pipeline it describes -- no Python code changes needed.
+
+pipeline_name: rides_stream
+
+source:
+  type: fake_generator      # engine.py maps this string to FakeGeneratorSource
+  options: {}               # no options needed yet
+
+sink:
+  type: kafka                # engine.py maps this string to KafkaSink
+  options:
+    topic: rides
+    bootstrap_servers: localhost:9092
+
+# How often to pull one event from the source and send it to the sink
+interval_seconds: 1

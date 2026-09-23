@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "RideEvent",
+  "namespace": "com.streamingplatform.rides",
+  "fields": [
+    {"name": "ride_id", "type": "string"},
+    {"name": "rider_name", "type": "string"},
+    {"name": "pickup_city", "type": "string"},
+    {"name": "dropoff_city", "type": "string"},
+    {"name": "fare", "type": "double"},
+    {"name": "status", "type": "string"},
+    {"name": "event_time", "type": "string"}
+  ]
+}

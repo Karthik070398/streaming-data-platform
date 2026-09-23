@@ -1,12 +1,21 @@
 """
-The IDEMPOTENT consumer -- this is the realistic fix used in production
-systems. "Idempotent" means: processing the same event twice has the
-SAME effect as processing it once. We achieve this by remembering every
-ride_id we've already handled, and skipping anything we've seen before.
+The IDEMPOTENT consumer -- now with BOTH layers of protection real
+production systems use:
 
-We save seen IDs to a file so this works even if you stop and restart
-the consumer -- a real system needs this to survive crashes/restarts too,
-not just handle duplicates that arrive back-to-back.
+  1. Kafka-level offset tracking (via a consumer group) -- avoids
+     re-reading the ENTIRE topic history on every restart.
+  2. Application-level dedup by ride_id (persisted to a file) -- catches
+     the genuine duplicates that slip through even WITH offset tracking,
+     e.g. a crash between processing a message and Kafka saving the offset.
+
+Neither layer alone is enough:
+  - Offset tracking alone still allows the "processed but crashed before
+    commit" duplicate described above.
+  - Our own dedup file alone (Layer 3 v1) works, but forces a full topic
+    re-read every restart, which doesn't scale on a large topic.
+
+Together, they're the real answer to "how do you get exactly-once behavior
+on top of Kafka's at-least-once guarantee."
 
 Run it with:
     python3 layer3_exactly_once/idempotent_consumer.py
@@ -14,11 +23,11 @@ Run it with:
 
 import json
 import os
-import sys
 from kafka import KafkaConsumer
 
 TOPIC_NAME = "rides_chaos"
 KAFKA_BROKER = "localhost:9092"
+CONSUMER_GROUP = "idempotent-consumer-group"
 SEEN_IDS_FILE = os.path.join(os.path.dirname(__file__), "seen_ride_ids.json")
 
 
@@ -38,7 +47,9 @@ def main():
     consumer = KafkaConsumer(
         TOPIC_NAME,
         bootstrap_servers=KAFKA_BROKER,
+        group_id=CONSUMER_GROUP,
         auto_offset_reset="earliest",
+        enable_auto_commit=True,
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
     )
 
@@ -46,7 +57,7 @@ def main():
     processed_count = 0
     skipped_duplicate_count = 0
 
-    print(f"Idempotent consumer listening on '{TOPIC_NAME}' (Ctrl+C to stop)...")
+    print(f"Idempotent consumer (group='{CONSUMER_GROUP}') listening on '{TOPIC_NAME}' (Ctrl+C to stop)...")
     print(f"(Already know about {len(seen_ride_ids)} rides from previous runs)")
 
     try:
@@ -58,8 +69,6 @@ def main():
                 print(f"  ⏭️  Skipped duplicate: {event['ride_id']} (already processed)")
                 continue
 
-            # This is the ONE place real processing would happen --
-            # e.g., charging a card, updating a database, sending an email.
             seen_ride_ids.add(event["ride_id"])
             processed_count += 1
             print(f"Processed (for real): {event['ride_id']}")

@@ -1,9 +1,12 @@
 # Streaming Data Platform
 
-A hands-on data engineering platform that simulates a ride-share event stream and
-solves four real production problems documented in top tech companies' engineering blogs.
+A hands-on data engineering platform simulating a ride-share event stream, built to
+model and solve four real production problems documented in the engineering blogs of
+Netflix, LinkedIn, Uber, and Amazon.
 
-> **Status:** 🚧 Work in progress — building layer by layer. See commit history for progress.
+**Status:** Complete — all four layers plus an observability stack are implemented
+and tested. See [PROGRESS.md](PROGRESS.md) for a detailed build log, including the
+real infrastructure issues diagnosed and resolved along the way.
 
 ## Problems this solves
 
@@ -17,76 +20,106 @@ solves four real production problems documented in top tech companies' engineeri
 ## Architecture
 
 ```
-Postgres (fake production DB)
+Postgres / fake generator
         │
         ▼
-   [Layer 1: Ingestion Engine]  ──▶  Kafka topic: rides
+[Layer 1] Config-driven ingestion engine (YAML → source → sink)
         │
         ▼
-   [Layer 2: Schema Registry]   (validates message shape)
+   Kafka topics (rides, rides_chaos, rides_avro, rides_windowed)
+        │
+        ├──▶ [Layer 2] Schema Registry + Avro enforcement
+        │
+        ├──▶ [Layer 3] Idempotent, offset-tracked consumers (exactly-once semantics)
+        │
+        └──▶ [Layer 4] PyFlink windowed aggregation with event-time watermarking
         │
         ▼
-   [Layer 3: Exactly-once consumer]  (idempotent, no duplicates)
-        │
-        ▼
-   [Layer 4: Flink/streaming job]  (handles late/out-of-order events)
+[Observability] Prometheus + Grafana — consumer lag, throughput, cluster health
 ```
 
 ## Tech stack
 
-Kafka, Zookeeper, Schema Registry, Postgres, Python, Docker Compose, (later: Flink, Grafana)
+Apache Kafka, Apache Flink (PyFlink), Confluent Schema Registry, Avro, Postgres,
+Python, Docker Compose, Prometheus, Grafana
+
+## Repository structure
+
+```
+layer1_ingestion/         Config-driven ingestion engine (source/sink connectors, YAML configs)
+layer2_schema_contracts/  Avro schemas, Schema Registry tooling, Avro producer/consumer
+layer3_exactly_once/      Chaos producer, naive vs. idempotent consumers
+layer4_late_data/         PyFlink windowed job, watermarking, late-event test producers
+shared/                   Shared fake event generator
+monitoring/               Prometheus config + Grafana dashboard definition
+docker-compose.yml        Full infrastructure: Kafka, Zookeeper, Schema Registry,
+                          Postgres, Kafka UI, Prometheus, Grafana
+PROGRESS.md               Detailed build log and debugging history
+```
 
 ## Setup
 
-1. Install Docker Desktop and Python 3.11+
+1. Install Docker Desktop, Python 3.11, and Java 11
 2. Clone this repo and `cd` into it
-3. Install Python dependencies:
+3. Create a virtual environment and install dependencies:
    ```
    python3 -m venv venv
    source venv/bin/activate
-   pip install -r requirements.txt
+   python3 -m pip install -r requirements.txt
    ```
 4. Start the infrastructure:
    ```
    docker compose up -d
    ```
-5. Open http://localhost:8080 to see the Kafka UI dashboard
-6. In one terminal, run the producer:
+5. Download the Flink Kafka connector JAR (not committed to this repo — see note below)
+   into `flink_jars/`:
    ```
-   python3 layer1_ingestion/producer.py
-   ```
-7. In another terminal, run the consumer:
-   ```
-   python3 layer1_ingestion/consumer.py
+   mkdir -p flink_jars
+   curl -o flink_jars/flink-sql-connector-kafka-3.2.0-1.19.jar \
+     https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/3.2.0-1.19/flink-sql-connector-kafka-3.2.0-1.19.jar
    ```
 
-You should see fake ride events flowing from the producer to the consumer in real time.
+## Running each layer
+
+**Layer 1 — config-driven ingestion:**
+```
+python3 layer1_ingestion/engine.py layer1_ingestion/configs/rides_stream.yaml
+```
+
+**Layer 2 — schema enforcement demo:**
+```
+python3 layer2_schema_contracts/schema_tool.py register rides_avro-value layer2_schema_contracts/schemas/ride_event_v1.avsc
+python3 layer2_schema_contracts/send_bad_event_demo.py
+```
+
+**Layer 3 — exactly-once processing demo:**
+```
+python3 layer3_exactly_once/chaos_producer.py
+python3 layer3_exactly_once/idempotent_consumer.py
+```
+
+**Layer 4 — windowed aggregation with watermarking:**
+```
+python3 layer4_late_data/windowed_job.py
+python3 layer4_late_data/demo_late_data.py
+```
+
+**Observability dashboard:**
+Open `http://localhost:3000` (login: admin/admin), import
+`monitoring/streaming_platform_dashboard.json`, and select your Prometheus data source.
+
+**Kafka UI:** `http://localhost:8080`
+**Prometheus:** `http://localhost:9090`
 
 ## Data note
 
-This project uses synthetic (fake) data generated with the `Faker` library, since
-real company data isn't available. All patterns and problems modeled are real and
-documented in the engineering blog posts linked above.
+This project uses synthetic data generated with the `Faker` library, since real
+company data isn't available. The architectural patterns and production problems
+modeled are real and documented in the engineering blog posts linked above.
 
-## Roadmap
+## Build log
 
-- [x] Kafka + Postgres infrastructure running in Docker
-- [x] Basic producer/consumer proving connectivity
-- [x] Layer 1: config-driven ingestion engine (YAML-defined sources/sinks)
-- [x] Layer 2: Schema Registry enforcement + Avro-based encoding, with compatibility demo
-- [x] Layer 3: exactly-once processing via idempotent, offset-tracked consumers
-- [x] Layer 4: PyFlink windowed aggregation with watermarking for late-arriving data
-- [x] Observability: Prometheus + Grafana dashboard for consumer lag and throughput
-- [ ] Optional: data catalog (Airbnb's Dataportal-style discovery layer)
-
-## Observability
-
-A Grafana dashboard (backed by Prometheus + kafka-exporter) tracks:
-- Consumer group lag, per topic and partition
-- Message throughput per topic
-- Consumer group offset progress
-- Kafka broker and partition health
-
-Access it at `http://localhost:3000` (admin/admin) once `docker compose up -d` is running.
-Dashboard definition: `monitoring/streaming_platform_dashboard.json` (import via
-Grafana's Dashboards → Import screen).
+See [PROGRESS.md](PROGRESS.md) for a full account of what was built in each layer,
+along with the real infrastructure issues diagnosed and fixed — including a Docker
+networking misconfiguration, a Python/Cython dependency conflict, and a distributed
+watermark-stalling bug caused by a Kafka partition / Flink parallelism mismatch.

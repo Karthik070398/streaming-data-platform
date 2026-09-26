@@ -17,3 +17,5 @@ venv/
 
 # Docker
 volumes/
+flink-sql-connector-kafka-*.jar
+flink_jars/*.jar

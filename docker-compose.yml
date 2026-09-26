@@ -70,3 +70,44 @@ services:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
       KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+
+ # ============================================================
+  # OBSERVABILITY STACK -- add these three services below your
+  # existing services in docker-compose.yml (same indentation level
+  # as "kafka:", "postgres:", etc. -- under the top-level "services:" key)
+  # ============================================================
+
+  # Reads Kafka's internal state (consumer lag, topic sizes, partition
+  # counts) and exposes it in a format Prometheus understands.
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    depends_on:
+      - kafka
+    command: ["--kafka.server=kafka:29092"]
+    ports:
+      - "9308:9308"
+
+  # Prometheus periodically pulls ("scrapes") metrics from kafka-exporter
+  # and stores them over time, so we can see trends, not just snapshots.
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    depends_on:
+      - kafka-exporter
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"   # Prometheus's own web UI, useful for sanity checks
+
+  # Grafana turns Prometheus's stored metrics into actual dashboards --
+  # graphs, gauges, alerts -- that a human can look at.
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"   # open http://localhost:3000 once running
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin   # login: admin / admin

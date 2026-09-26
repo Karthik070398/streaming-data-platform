@@ -1,5 +1,8 @@
 # Streaming Data Platform
 
+<img width="1881" height="826" alt="grafana-dashboard" src="https://github.com/user-attachments/assets/a25ef820-878c-404f-a2e6-202ab2a5030f" />
+
+
 A hands-on data engineering platform simulating a ride-share event stream, built to
 model and solve four real production problems documented in the engineering blogs of
 Netflix, LinkedIn, Uber, and Amazon.

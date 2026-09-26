@@ -72,8 +72,21 @@ documented in the engineering blog posts linked above.
 
 - [x] Kafka + Postgres infrastructure running in Docker
 - [x] Basic producer/consumer proving connectivity
-- [ ] Layer 1: config-driven ingestion engine (YAML-defined sources/sinks)
-- [ ] Layer 2: Schema Registry enforcement + compatibility demo
-- [ ] Layer 3: exactly-once delivery with chaos testing
-- [ ] Layer 4: Flink job with watermarking for late data
-- [ ] Observability dashboard (Prometheus + Grafana)
+- [x] Layer 1: config-driven ingestion engine (YAML-defined sources/sinks)
+- [x] Layer 2: Schema Registry enforcement + Avro-based encoding, with compatibility demo
+- [x] Layer 3: exactly-once processing via idempotent, offset-tracked consumers
+- [x] Layer 4: PyFlink windowed aggregation with watermarking for late-arriving data
+- [x] Observability: Prometheus + Grafana dashboard for consumer lag and throughput
+- [ ] Optional: data catalog (Airbnb's Dataportal-style discovery layer)
+
+## Observability
+
+A Grafana dashboard (backed by Prometheus + kafka-exporter) tracks:
+- Consumer group lag, per topic and partition
+- Message throughput per topic
+- Consumer group offset progress
+- Kafka broker and partition health
+
+Access it at `http://localhost:3000` (admin/admin) once `docker compose up -d` is running.
+Dashboard definition: `monitoring/streaming_platform_dashboard.json` (import via
+Grafana's Dashboards → Import screen).

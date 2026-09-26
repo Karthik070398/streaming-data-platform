@@ -140,6 +140,41 @@ wall-clock timing.
 
 ---
 
+## Observability: Prometheus + Grafana
+
+**Problem modeled:** the general need, at every company in this project's
+inspiration list, for a single place to see pipeline health -- consumer lag,
+throughput, error rates -- rather than inferring it from scattered logs.
+
+**Built:**
+- `kafka-exporter` added to `docker-compose.yml`, reading Kafka's internal
+  state (consumer group offsets, lag, broker/partition counts) and exposing
+  it in Prometheus's metrics format
+- `prometheus.yml` -- a scrape config pulling fresh metrics from
+  `kafka-exporter` every 5 seconds
+- Grafana connected to Prometheus as a data source, with a dashboard
+  (`monitoring/streaming_platform_dashboard.json`) covering consumer lag,
+  per-topic throughput, consumer offset progress, and basic cluster health
+
+**Real issue hit and fixed:** a "Consumer Group Lag" panel appeared to show
+no activity while producing to the `rides` topic via the Layer 1 engine. This
+looked like a broken panel, but Prometheus's own UI confirmed the underlying
+metric (`kafka_consumergroup_lag`) had real, correct data all along --
+sitting flat at zero. The actual cause: the panel was scoped to the
+`idempotent-consumer-group`, which only ever reads from `rides_chaos`, a
+completely different topic than the one being produced to at the time. The
+dashboard was working correctly; the test was pointed at the wrong pipeline.
+Fixed by producing directly into `rides_chaos` while its consumer was paused,
+then watching lag climb, and drop again once the consumer resumed.
+
+**Key lesson proven:** a metric reading "flat" or "zero" is not the same as
+"broken" -- confirming a value directly against its source (Prometheus's own
+query UI, in this case) before assuming a dashboard bug saved a lot of wasted
+debugging, and is a generally useful habit whenever a dashboard seems wrong.
+
+
+---
+
 ## What this project demonstrates
 
 Beyond the four architectural patterns themselves, this project involved
@@ -158,5 +193,5 @@ the pipeline code itself.
 - [x] Layer 2: schema contracts + Avro enforcement
 - [x] Layer 3: exactly-once processing via idempotent, offset-tracked consumers
 - [x] Layer 4: windowed aggregation with watermarking for late data
-- [ ] Observability: Prometheus + Grafana dashboard across all four layers
+- [x] Observability: Prometheus + Grafana dashboard across all four layers
 - [ ] Optional: data catalog (Airbnb's Dataportal-style discovery layer)
